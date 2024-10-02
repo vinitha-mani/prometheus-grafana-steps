@@ -1,0 +1,134 @@
+Create Master and slave (if it is a ec2 machine, then add the port# 3000,9090,9093,9100 in security group
+In master install prometheus 
+
+https://github.com/prometheus/prometheus/releases/download/v2.53.2/prometheus-2.53.2.linux-amd64.tar.gz
+tar -xvzf prometheus-2.53.2.linux-amd64.tar.gz
+cd prometheus-2.53.2.linux-amd64
+
+vi prometheus.yml
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093 <need to add the master ip or can keep it as a localhost>
+
+rule_files:
+  - "alert-rules.yml"  <need to mention the alert-rules.yml file, where the alerts has been defined>
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"] 
+
+  - job_name: "node"
+    static_configs:
+      - targets: ["54.80.89.9:9100", "54.167.226.127:9100", "3.87.11.17:9100", "3.81.207.149:9100"]   < need to mention the slave machine ip's>
+
+once done , 
+need to start the prometheus with the command 
+
+./prometheus --config.file=<prometheus config file>
+
+In slave machines, need to install the node-exporter, if we wnat to montior master , then we can install in master too
+
+https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz
+tar -xvzf node_exporter-1.8.2.linux-amd64.tar.gz
+cd node_exporter-1.8.2.linux-amd64
+
+start the node_exporter as 
+./node_exporter &(in background)
+
+and check the browser with the <public ip of the server:9090>(prometheus)
+check the browser with the <public ip of the server:9100>(node-exporter)
+
+
+Need to install grafana in server alone
+
+sudo apt-get install -y apt-transport-https software-properties-common wget
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+or 
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com beta main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+# Updates the list of available packages
+sudo apt-get update
+# Installs the latest OSS release:
+sudo apt-get install grafana
+or
+# Installs the latest Enterprise release:
+sudo apt-get install grafana-enterprise
+
+sudo systemctl daemon-reload
+sudo systemctl start grafana-server
+sudo systemctl status grafana-server
+sudo systemctl enable grafana-server.service
+
+<public ip:3000> in web browser and 
+username - admin
+password - admin
+
+data source -> add promethus 
+import dashboard -> node exporter ->186-> load and select prometheus-> it creates a dashboard
+
+
+
+Alert manager set up
+
+install alert manager in server alone 
+wget https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz
+tar -xvzf alertmanager-0.27.0.linux-amd64.tar.gz
+cd alertmanager-0.27.0.linux-amd64
+
+need to edit the below in promethus config file 
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093 <need to add the master ip or can keep it as a localhost>
+
+rule_files:
+  - "alert-rules.yml"  <need to mention the alert-rules.yml file, where the alerts has been defined>
+
+
+and edit the alertmanager config file as 
+
+vi alertmanager.yml
+
+global:
+  resolve_timeout: 1m
+  smtp_from: k8shelmprogra@gmail.com
+  smtp_smarthost: smtp.gmail.com:587
+  smtp_auth_username: k8shelmprogra@gmail.com
+  smtp_auth_identity: k8shelmprogra@gmail.com
+  smtp_auth_password: '*********'
+  smtp_require_tls: true
+
+route:
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 2m
+  repeat_interval: 4h
+  receiver: 'email_notifications'
+
+receivers:
+- name: 'email_notifications'
+  email_configs:
+  - to: k8shelmprogra@gmail.com
+    send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+
+start ./alertmanager --config.file=alertmanager.yml & -> make them to run in background
+
+<public ip:9093>
